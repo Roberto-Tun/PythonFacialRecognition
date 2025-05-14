@@ -1,1 +1,1 @@
-FIREBASE_KEY = 'kaxten-2090b-firebase-adminsdk-fbsvc-051943d1e1.json'
+FIREBASE_KEY = 'kaxten-2090b-firebase-adminsdk-fbsvc-a5d6c2e9c7.json'

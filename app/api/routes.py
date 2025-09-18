@@ -60,7 +60,7 @@ async def register_missing_person(
             "nombre": nombre,
             "apellido_paterno": apellido_paterno,
             "apellido_materno": apellido_materno,
-            "genero": genero,
+            "género": genero,
             "edad": edad,
             "fecha_de_la_denuncia": fecha_de_la_denuncia,
             "fecha_de_los_hechos": fecha_de_los_hechos,
@@ -72,7 +72,7 @@ async def register_missing_person(
             "estatura": estatura,
             "peso": peso,
             "tez": tez,
-            "senas_particulares": senas_particulares,
+            "señas_particulares": senas_particulares,
             "encontrado": encontrado,
             "fecha_registro": datetime.utcnow(),
         }

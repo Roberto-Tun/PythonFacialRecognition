@@ -5,9 +5,12 @@ import os
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = FIREBASE_KEY
 
 cred = credentials.Certificate(FIREBASE_KEY)
-default_app = initialize_app(cred, {
-    'storageBucket': 'kaxten-2090b.firebasestorage.app'  # ¡IMPORTANTE!
-})
+default_app = initialize_app(
+    cred,
+    {
+        "storageBucket": "kaxten-2090b.firebasestorage.app"  # ¡IMPORTANTE!
+    },
+)
 
 db = firestore.client()
 bucket = storage.bucket()

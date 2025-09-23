@@ -1,33 +1,33 @@
 # Cloud Build configuration for automatic deployment
 steps:
   # Build the container image
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/facial-recognition-api', '.']
-  
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["build", "-t", "gcr.io/$PROJECT_ID/facial-recognition-api", "."]
+
   # Push the container image to Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/facial-recognition-api']
-  
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/facial-recognition-api"]
+
   # Deploy container image to Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: gcloud
     args:
-    - 'run'
-    - 'deploy'
-    - 'facial-recognition-api'
-    - '--image'
-    - 'gcr.io/$PROJECT_ID/facial-recognition-api'
-    - '--region'
-    - 'us-central1'
-    - '--platform'
-    - 'managed'
-    - '--allow-unauthenticated'
-    - '--memory'
-    - '2Gi'
-    - '--cpu'
-    - '2'
-    - '--timeout'
-    - '900'
+      - "run"
+      - "deploy"
+      - "facial-recognition-api"
+      - "--image"
+      - "gcr.io/$PROJECT_ID/facial-recognition-api"
+      - "--region"
+      - "us-central1"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+      - "--memory"
+      - "2Gi"
+      - "--cpu"
+      - "2"
+      - "--timeout"
+      - "900"
 
 images:
-  - 'gcr.io/$PROJECT_ID/facial-recognition-api'
+  - "gcr.io/$PROJECT_ID/facial-recognition-api"

@@ -112,7 +112,7 @@ async def register_missing_person(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@router.get("/identify/")
+@router.post("/identify/")
 async def identify_faces(files: List[UploadFile] = File(...)):
     try:
         known_faces = []
@@ -165,7 +165,7 @@ async def identify_faces(files: List[UploadFile] = File(...)):
 
                 person_info = {}
                 if best_match["id"]:
-                    ref = db.collection("personas_desaparecidas").document(
+                    ref = db.collection("PersonasDesaparecidas").document(
                         best_match["id"]
                     )
                     doc = ref.get()

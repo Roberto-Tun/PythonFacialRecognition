@@ -1,23 +1,54 @@
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import JSONResponse
-from typing import List
+from typing import List, Any, Dict
 import numpy as np
 from datetime import datetime
 from app.core.face_detector import detect_faces
 from app.core.embedder import get_embedding
 from app.utils.image_utils import read_image
 from app.core.firebase import db, bucket
-from google.cloud import storage
+from google.cloud import storage, firestore
 import uuid
-
 
 router = APIRouter()
 
+# --- Helpers -----------------------------------------------------------------
 
-def calculate_similarity(emb1, emb2):
+
+def calculate_similarity(emb1, emb2) -> float:
     emb1 = emb1.flatten()
     emb2 = emb2.flatten()
-    return np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
+    denom = (np.linalg.norm(emb1) * np.linalg.norm(emb2)) + 1e-12
+    return float(np.dot(emb1, emb2) / denom)
+
+
+def sanitize_id(doc_id: str) -> str:
+    return doc_id.replace("/", "_").strip()
+
+
+def encode_firestore_value(v: Any) -> Any:
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, firestore.DocumentReference):
+        return v.path
+    return v
+
+
+def sanitize_firestore_dict(d: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            out[k] = sanitize_firestore_dict(v)
+        elif isinstance(v, list):
+            out[k] = [
+                sanitize_firestore_dict(x)
+                if isinstance(x, dict)
+                else encode_firestore_value(x)
+                for x in v
+            ]
+        else:
+            out[k] = encode_firestore_value(v)
+    return out
 
 
 # Upload image to Firebase Storage
@@ -30,6 +61,9 @@ def upload_to_firebase_storage(
     blob.upload_from_string(file_data, content_type=content_type)
     blob.make_public()
     return blob.public_url
+
+
+# --- Routes ------------------------------------------------------------------
 
 
 @router.post("/register_missing_person/")
@@ -55,6 +89,8 @@ async def register_missing_person(
     files: List[UploadFile] = File(...),
 ):
     try:
+        id = sanitize_id(id)
+
         person_data = {
             "id": id,
             "nombre": nombre,
@@ -83,7 +119,6 @@ async def register_missing_person(
             contents = await file.read()
             img = read_image(contents)
             faces = detect_faces(img)
-
             if not faces:
                 continue
 
@@ -98,6 +133,7 @@ async def register_missing_person(
                 embedding = get_embedding(face)
                 db.collection("Vectores").add(
                     {
+                        # keep as plain ID (string) for compatibility
                         "id_persona_desaparecida": id,
                         "vector": embedding.tolist(),
                         "nombre_imagen": file.filename,
@@ -117,6 +153,7 @@ async def identify_faces(files: List[UploadFile] = File(...)):
     try:
         known_faces = []
 
+        # Load all known embeddings
         for doc in db.collection("Vectores").stream():
             data = doc.to_dict()
             vector_raw = data.get("vector", [])
@@ -126,9 +163,20 @@ async def identify_faces(files: List[UploadFile] = File(...)):
                 and len(vector_raw) == 512
                 and all(isinstance(x, (float, int)) for x in vector_raw)
             ):
+                # Puede venir como referencia o como string
+                person_ref_or_id = data.get("id_persona_desaparecida")
+
+                if isinstance(person_ref_or_id, firestore.DocumentReference):
+                    persona_ref = person_ref_or_id
+                    person_id = None
+                else:
+                    persona_ref = None
+                    person_id = person_ref_or_id  # string o None
+
                 known_faces.append(
                     {
-                        "id": data.get("id_persona_desaparecida"),
+                        "persona_ref": persona_ref,
+                        "person_id": person_id,
                         "embedding": np.array(vector_raw, dtype=np.float32).flatten(),
                         "image_url": data.get("ruta_storage"),
                     }
@@ -152,39 +200,53 @@ async def identify_faces(files: List[UploadFile] = File(...)):
 
             for face in face_images:
                 query_emb = get_embedding(face).flatten()
-                best_match = {"id": None, "similarity": 0, "image_url": None}
+                best_match = {
+                    "persona_ref": None,
+                    "person_id": None,
+                    "similarity": 0.0,
+                    "image_url": None,
+                }
 
                 for known in known_faces:
                     sim = calculate_similarity(query_emb, known["embedding"])
                     if sim > best_match["similarity"]:
                         best_match = {
-                            "id": known["id"],
+                            "persona_ref": known["persona_ref"],
+                            "person_id": known["person_id"],
                             "similarity": sim,
                             "image_url": known["image_url"],
                         }
 
+                # Obtener info de la persona
                 person_info = {}
-                if best_match["id"]:
+                if best_match["persona_ref"] is not None:
+                    doc_persona = best_match["persona_ref"].get()
+                    if doc_persona.exists:
+                        person_info = sanitize_firestore_dict(doc_persona.to_dict())
+                        person_info["id"] = doc_persona.id
+                elif best_match["person_id"]:
                     ref = db.collection("PersonasDesaparecidas").document(
-                        best_match["id"]
+                        str(best_match["person_id"])
                     )
-                    doc = ref.get()
-                    if doc.exists:
-                        person_info = doc.to_dict()
-                        person_info["id"] = doc.id
+                    doc_persona = ref.get()
+                    if doc_persona.exists:
+                        person_info = sanitize_firestore_dict(doc_persona.to_dict())
+                        person_info["id"] = doc_persona.id
 
                 results.append(
                     {
                         "filename": file.filename,
-                        "match_info": person_info,
+                        "match_info": person_info,  # already sanitized (JSON safe)
                         "similarity": f"{round(best_match['similarity'] * 100, 2)}%",
-                        "image_url": best_match["image_url"],
+                        "image_url": best_match["image_url"] or "",
                     }
                 )
 
+        # Entire response is JSON serializable now
         return {"results": results}
 
     except Exception as e:
+        # keep error visible
         return JSONResponse(
             status_code=500, content={"error": f"Firestore error: {str(e)}"}
         )

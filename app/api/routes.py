@@ -30,7 +30,7 @@ def encode_firestore_value(v: Any) -> Any:
     if isinstance(v, datetime):
         return v.isoformat()
     if isinstance(v, firestore.DocumentReference):
-        return v.path
+        return v.path  # or v.id if you prefer just the id
     return v
 
 
@@ -91,8 +91,9 @@ async def register_missing_person(
     try:
         id = sanitize_id(id)
 
+        # Create/get the person document and write the data
+        person_ref = db.collection("PersonasDesaparecidas").document(id)
         person_data = {
-            "id": id,
             "nombre": nombre,
             "apellido_paterno": apellido_paterno,
             "apellido_materno": apellido_materno,
@@ -112,8 +113,7 @@ async def register_missing_person(
             "encontrado": encontrado,
             "fecha_registro": datetime.utcnow(),
         }
-
-        db.collection("PersonasDesaparecidas").document(id).set(person_data)
+        person_ref.set(person_data)
 
         for file in files:
             contents = await file.read()
@@ -131,10 +131,10 @@ async def register_missing_person(
 
             for face in faces:
                 embedding = get_embedding(face)
+                # ✅ Store a DocumentReference (robust)
                 db.collection("Vectores").add(
                     {
-                        # keep as plain ID (string) for compatibility
-                        "id_persona_desaparecida": id,
+                        "id_persona_desaparecida": person_ref,  # DocumentReference
                         "vector": embedding.tolist(),
                         "nombre_imagen": file.filename,
                         "ruta_storage": image_url,
@@ -163,15 +163,15 @@ async def identify_faces(files: List[UploadFile] = File(...)):
                 and len(vector_raw) == 512
                 and all(isinstance(x, (float, int)) for x in vector_raw)
             ):
-                # Puede venir como referencia o como string
                 person_ref_or_id = data.get("id_persona_desaparecida")
 
+                # Prefer DocumentReference; keep fallback for legacy string IDs
                 if isinstance(person_ref_or_id, firestore.DocumentReference):
                     persona_ref = person_ref_or_id
                     person_id = None
                 else:
                     persona_ref = None
-                    person_id = person_ref_or_id  # string o None
+                    person_id = person_ref_or_id  # legacy
 
                 known_faces.append(
                     {
@@ -225,6 +225,7 @@ async def identify_faces(files: List[UploadFile] = File(...)):
                         person_info = sanitize_firestore_dict(doc_persona.to_dict())
                         person_info["id"] = doc_persona.id
                 elif best_match["person_id"]:
+                    # Legacy fallback (string ID)
                     ref = db.collection("PersonasDesaparecidas").document(
                         str(best_match["person_id"])
                     )
@@ -242,11 +243,9 @@ async def identify_faces(files: List[UploadFile] = File(...)):
                     }
                 )
 
-        # Entire response is JSON serializable now
         return {"results": results}
 
     except Exception as e:
-        # keep error visible
         return JSONResponse(
             status_code=500, content={"error": f"Firestore error: {str(e)}"}
         )

@@ -29,6 +29,9 @@ Hay dos caminos. Elige uno.
 
 **A. Con la llave de cuenta de servicio, montada por volumen** (no entra a la imagen):
 
+En **PowerShell**, no en Git Bash: Git Bash convierte `/secretos/llave.json` en
+`C:/Program Files/Git/secretos/...` y el contenedor no encuentra la llave.
+
 ```powershell
 $llave = "C:\ruta\fuera\del\repo\llave-de-servicio.json"
 docker run --rm -p 8000:8000 `

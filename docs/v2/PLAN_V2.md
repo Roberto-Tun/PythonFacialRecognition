@@ -71,23 +71,33 @@ vectorial creado por Saul con `gcloud`), en lugar de la matriz en memoria.
 
 ## Estado
 
-### Fase A — hecha en código (20/11/2026), falta probarla contra Firestore real
+### Fase A — hecha y probada contra Firestore (20/11/2026)
 
 - A1–A10 implementadas: `app/core/credenciales.py`, `app/v2/*`, `.dockerignore`,
   `Dockerfile` sin llave, `.pyc` fuera de git, `tests/` (23 pruebas en verde con
   repositorio en memoria y visión falsa).
-- **No verificado:** lectura/escritura real en `base/Vectores` (no hay `gcloud` ni
-  credenciales en la máquina del agente), ni la detección real de MTCNN con caras
-  (no hay fotos de prueba). Lo prueba Saul con `docs/v2/PRUEBAS_LOCAL.md`.
+- **Verificado en el contenedor con la llave montada** (índice `pruebas`, vectores
+  sintéticos, borrados al final): alta (1.25 s la primera, por la conexión), búsqueda
+  (0.30 s, similitud 0.9986), cara desconocida → vacío, grupo ajeno → vacío, baja →
+  `borrados: 1`. Leyó el índice `miembros` que había escrito un teléfono (1 vector):
+  el esquema compartido funciona.
+- TensorFlow, MTCNN y FaceNet cargan en el contenedor (primera foto 14 s, siguientes
+  al instante).
+- **No verificado:** el vector de una **cara real** (solo se probó con una imagen
+  sin cara), ni que un vector del servidor y uno del teléfono de la misma persona
+  pasen el umbral. Es la primera prueba de la fase C.
 - La v1 no cambió de comportamiento. Solo cambió de dónde salen las credenciales:
   si el archivo de `config.FIREBASE_KEY` existe se usa igual que antes; si no, ADC.
 
 ### Pendientes de Saul antes de desplegar
 
-1. Confirmar que **no hay disparadores de Cloud Build** sobre este repositorio (el
-   `cloudbuild.yaml` despliega solo). Hasta entonces la rama `v2` no se sube.
+1. ~~Confirmar que no hay disparadores de Cloud Build~~: confirmado, no hay. `v2` ya
+   está en GitHub.
 2. Rotar la llave de cuenta de servicio que estuvo en la raíz del repo y sacarla de
    la carpeta (T-01).
+   Además, el **historial** del repositorio tiene credenciales de otro proyecto
+   (`facerecognitionapp-a1ca7-…json` y `keyFaceRecog.pem`): revocarlas en su consola.
+   Borrarlas del historial exige reescribirlo (`git filter-repo`) y forzar el push.
 3. Crear el servicio aparte (`kaxten-api-v2`) con `V2_SOLO=1`, `V2_LLAVES` desde
    Secret Manager y una cuenta de servicio con acceso a Firestore.
 

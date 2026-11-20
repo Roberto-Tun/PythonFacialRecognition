@@ -1,0 +1,7 @@
+# Solo para correr tests/ (sin TensorFlow ni Firebase)
+fastapi
+httpx
+python-multipart
+numpy
+pillow
+pytest

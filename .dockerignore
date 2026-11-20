@@ -1,0 +1,20 @@
+# Credenciales: se montan por volumen o vienen de la cuenta de servicio, nunca
+# dentro de la imagen.
+*firebase-adminsdk*.json
+*service-account*.json
+*.pem
+.env
+.env.*
+
+.git
+.gitignore
+.vscode
+venv
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+tests
+docs
+pytest.ini
+requirements-dev.txt

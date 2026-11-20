@@ -1,16 +1,10 @@
-from firebase_admin import credentials, initialize_app, firestore, storage
-from config import FIREBASE_KEY
-import os
+from firebase_admin import firestore, storage
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = FIREBASE_KEY
+from app.core.credenciales import inicializar_firebase
 
-cred = credentials.Certificate(FIREBASE_KEY)
-default_app = initialize_app(
-    cred,
-    {
-        "storageBucket": "kaxten-2090b.firebasestorage.app"  # ¡IMPORTANTE!
-    },
-)
+# v1 (KAXTEN): base `(default)` y el bucket compartido. Mismo comportamiento que
+# antes; solo cambia de dónde salen las credenciales (ver credenciales.py).
+default_app = inicializar_firebase()
 
 db = firestore.client()
 bucket = storage.bucket()

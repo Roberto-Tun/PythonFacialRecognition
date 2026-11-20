@@ -28,7 +28,9 @@ COPY . .
 
 # Set environment variables
 ENV PYTHONPATH=/app
-ENV GOOGLE_APPLICATION_CREDENTIALS=/app/kaxten-2090b-firebase-adminsdk-fbsvc-051943d1e1.json
+# Sin llave en la imagen (T-01). En Cloud Run se usa la cuenta de servicio del
+# servicio; en local se monta el archivo y se define GOOGLE_APPLICATION_CREDENTIALS
+# al correr el contenedor (docs/v2/PRUEBAS_LOCAL.md).
 
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser -m

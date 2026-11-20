@@ -58,6 +58,19 @@ llaves en Secret Manager, límite de tamaño de las fotos, CORS si hiciera falta
 Búsqueda vectorial de Firestore (`find_nearest` con prefiltro por `indice`, índice
 vectorial creado por Saul con `gcloud`), en lugar de la matriz en memoria.
 
+## Fase E — KAXTEN en la v2 (migración a futuro)
+
+La v1 **no se deshabilita**: la app publicada de KAXTEN la sigue usando. Esta fase
+prepara que KAXTEN pueda pasarse a la v2 cuando se decida.
+
+| Id | Tarea | Listo cuando |
+|---|---|---|
+| E1 | **Base por cliente.** Hoy la v2 rechaza `(default)` para proteger a KAXTEN. En `V2_LLAVES`, cada cliente declara su base (`"base_datos": "base"` para la demo, `"(default)"` para KAXTEN) y el repositorio se elige por cliente. La guarda pasa a ser: solo el cliente `kaxten` puede usar `(default)`, y solo con su llave | Una llave de la demo nunca lee ni escribe en `(default)`, con prueba automática |
+| E2 | **Índice de KAXTEN** (`desaparecidos`) sobre los documentos de `Vectores` de `(default)`, que hoy no tienen `indice` y guardan `id_persona_desaparecida` como referencia. Opciones: un adaptador de lectura que trate ese esquema viejo como el índice `desaparecidos` (sin tocar los datos), o una migración que agregue `indice`/`sujeto_id` a cada documento. Recomendado: el adaptador, porque no escribe en producción | `/v2/indices/desaparecidos/busqueda/vector` encuentra lo mismo que `/identify/` |
+| E3 | **Filtro de visibilidad** (T-05): un reporte oculto no debe salir como coincidencia. En la v2 genérica no aplica; en el índice `desaparecidos` sí | Un reporte con `visibilidad` no pública no aparece |
+| E4 | **La app de KAXTEN** busca por vector en la v2, con la v1 como respaldo mientras dure la migración | Las dos versiones de la app conviven |
+| E5 | **Retirar la v1** cuando ninguna versión publicada la use | Métricas de Cloud Run sin llamadas a `/identify/` en N semanas |
+
 ## Riesgos conocidos
 
 - **Detector distinto:** el servidor detecta con MTCNN y el teléfono con ML Kit. El
@@ -101,7 +114,25 @@ vectorial creado por Saul con `gcloud`), en lugar de la matriz en memoria.
 3. Crear el servicio aparte (`kaxten-api-v2`) con `V2_SOLO=1`, `V2_LLAVES` desde
    Secret Manager y una cuenta de servicio con acceso a Firestore.
 
+### Fase C — hecha (20/11/2026), falta probarla en teléfono
+
+En `kaxten_base` (detalle en su `docs/plantilla/03_plan_de_trabajo.md`, sección
+"Después del plan"):
+
+- `lib/services/api_facial_v2_service.dart`: búsqueda por vector, tope de 5 s,
+  motivo explícito cuando no usa la nube. Se enciende con
+  `AppConfig.usarServidorFacial`, `DOMINIO_GLOBAL` (URL de la v2) y
+  `SistemaApiFacial.LLAVE_V2` en `lib/sistema.dart`.
+- Búsqueda facial: teléfono + nube, juntadas por Registro. Check-in: la nube solo
+  cuando el teléfono duda.
+- Vectores nuevos de otros teléfonos llegan solos (`escucharCambios`).
+- Se borró de la app todo el camino a la v1.
+- Verificado: `test/api_facial_v2_test.dart` contra este contenedor (alta en la v2,
+  búsqueda desde el cliente de la app, similitud > 0.99, baja).
+- **No verificado:** en teléfono, ni con una cara real (MTCNN del servidor contra
+  ML Kit del teléfono).
+
 ### Siguiente
 
-Fase C (cliente en `kaxten_base`) en cuanto Saul confirme que la Fase A funciona
-contra la base `base`.
+Fase B (operación) antes de la demo, sobre todo T-07 (pesos en la imagen) o
+`--min-instances 1`. Fase E cuando se decida migrar KAXTEN.

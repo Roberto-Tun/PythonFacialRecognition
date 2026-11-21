@@ -3,6 +3,7 @@
 # Corre en cada push a `v2` que toque el código. El despliegue queda apagado
 # hasta que exista la variable del repositorio DESPLEGAR_V2=true (así, subir
 # este archivo no despliega nada por accidente).
+# Primer despliegue automático
 
 name: API v2 — pruebas y despliegue
 

@@ -121,7 +121,11 @@ prepara que KAXTEN pueda pasarse a la v2 cuando se decida.
 3. Crear el servicio aparte (`kaxten-api-v2`) con `V2_SOLO=1`, `V2_LLAVES` desde
    Secret Manager y una cuenta de servicio con acceso a Firestore.
 
-### Fase C — hecha (20/11/2026), falta probarla en teléfono
+### Fase C — hecha (20/11/2026) y probada contra Cloud Run (21/11/2026)
+
+> Con la llave de la plantilla, la llamada exacta de la app (búsqueda por vector en
+> `miembros`) encontró en 0.26 s al socio que se dio de alta **en el teléfono**
+> (0.8156). Falta la prueba en el teléfono con la nube encendida.
 
 En `kaxten_base` (detalle en su `docs/plantilla/03_plan_de_trabajo.md`, sección
 "Después del plan"):

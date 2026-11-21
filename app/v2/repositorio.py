@@ -30,6 +30,9 @@ class Vector:
     vector: List[float]
     modelo: str
     fecha: str
+    # Solo lo usa el índice de KAXTEN (su app muestra esa foto). El esquema de
+    # la base `base` no lo lleva.
+    ruta_storage: str = ""
 
     def documento(self) -> dict:
         return {
@@ -67,6 +70,8 @@ def id_servidor(indice: str, sujeto_id: str, vector: Iterable[float]) -> str:
 
 
 class Repositorio(Protocol):
+    def indices_existentes(self) -> List[str]: ...
+    def datos(self, indice: str, ids: List[str]) -> Dict[str, dict]: ...
     def leer_indice(self, indice: str) -> List[Vector]: ...
     def guardar(self, vectores: List[Vector]) -> None: ...
     def borrar_sujeto(self, indice: str, sujeto_id: str) -> int: ...
@@ -78,6 +83,14 @@ class RepositorioMemoria:
     def __init__(self) -> None:
         self.docs: Dict[str, dict] = {}
         self.lecturas = 0
+        # (índice, id) → datos del sujeto, para probar el enriquecimiento.
+        self.sujetos: Dict[tuple, dict] = {}
+
+    def datos(self, indice: str, ids: List[str]) -> Dict[str, dict]:
+        return {i: self.sujetos[(indice, i)] for i in ids if (indice, i) in self.sujetos}
+
+    def indices_existentes(self) -> List[str]:
+        return sorted({str(d.get("indice")) for d in self.docs.values() if d.get("indice")})
 
     def leer_indice(self, indice: str) -> List[Vector]:
         self.lecturas += 1
@@ -109,6 +122,20 @@ class RepositorioFirestore:
 
     def leer_indice(self, indice: str) -> List[Vector]:
         return [Vector.desde_documento(d.id, d.to_dict() or {}) for d in self._por_indice(indice).stream()]
+
+    def datos(self, indice: str, ids: List[str]) -> Dict[str, dict]:
+        from app.v2.datos import COLECCION_POR_INDICE, sanear
+
+        coleccion = COLECCION_POR_INDICE.get(indice)
+        if not coleccion or not ids:
+            return {}
+        docs = self._db.get_all([self._db.collection(coleccion).document(i) for i in ids])
+        return {d.id: sanear(d.to_dict() or {}) for d in docs if d.exists}
+
+    def indices_existentes(self) -> List[str]:
+        """Para buscar "en todo" sin decir el índice. Lee solo el campo `indice`;
+        con cientos o miles de caras alcanza."""
+        return sorted({str((d.to_dict() or {}).get("indice")) for d in self._col.select(["indice"]).stream()} - {"None", ""})
 
     def guardar(self, vectores: List[Vector]) -> None:
         # Un lote admite 500 escrituras; un alta trae unas cuantas.

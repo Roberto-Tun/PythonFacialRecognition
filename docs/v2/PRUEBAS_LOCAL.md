@@ -64,7 +64,9 @@ docker run --rm -p 8000:8000 `
 ### Probar a mano
 
 Abre `http://localhost:8000/docs`: FastAPI arma una página para probar cada
-endpoint desde el navegador. Un recorrido corto:
+endpoint desde el navegador. Lo más rápido: `POST /v2/busqueda/foto` → "Try it
+out" → elige la foto → "Execute". Sin índice busca en todos. La llave va en el
+botón **Authorize** (en modo abierto no hace falta). Un recorrido completo:
 
 1. `POST /v2/indices/pruebas/sujetos/yo/rostros` con una foto tuya → `guardados: [...]`.
 2. `POST /v2/indices/pruebas/busqueda/foto` con **otra** foto tuya → apareces con
@@ -92,3 +94,62 @@ docker run --rm -p 8000:8000 -e V2_SOLO=1 `
 La llave se genera con
 `python -c "import secrets; print(secrets.token_urlsafe(32))"` y nunca se escribe
 en el repo ni en la documentación.
+
+## 3. Imagen solo local con la llave adentro (`api-facial-v2:local-con-llave`)
+
+Por prisa, para no montar la llave cada vez. **Nunca se sube a ningún registro**
+ni se usa para desplegar: tiene la llave de servicio adentro. Se arma a partir de
+la imagen normal, sin tocar el `Dockerfile` del repo:
+
+```powershell
+docker build -t api-facial-v2:local .
+$llave = "C:\Users\Saul Colli\Documents\PythonFacialRecognition\kaxten-2090b-firebase-adminsdk-fbsvc-bad426e2b5.json"
+docker rm -f armado 2>$null
+docker create --name armado api-facial-v2:local
+docker cp $llave armado:/app/llave-local.json
+docker commit --change "ENV GOOGLE_APPLICATION_CREDENTIALS=/app/llave-local.json" armado api-facial-v2:local-con-llave
+docker rm armado
+```
+
+Y se corre sin `-v`:
+
+```powershell
+docker run --rm -p 8000:8000 -e V2_SOLO=1 -e V2_SIN_LLAVE=1 api-facial-v2:local-con-llave
+```
+
+Para borrarla: `docker rmi api-facial-v2:local-con-llave`.
+
+## 4. Probar el índice de KAXTEN (`desaparecidos`)
+
+⚠️ **Es la base de producción de KAXTEN.** La búsqueda solo lee. Una alta
+**escribe** en `Vectores` de KAXTEN (y por foto, en `rostros/`), y la app de
+KAXTEN la verá. Para probar, usa solo la búsqueda, o una persona de prueba que
+ya exista y bórrala después con `?confirmar=true`.
+
+`V2_SIN_LLAVE` no abre este índice: hace falta una llave de KAXTEN.
+
+```powershell
+$k = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$d = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$llaves = '{"' + $k + '": {"cliente": "kaxten", "base_datos": "(default)", "indices": ["desaparecidos"]}, "' + $d + '": {"cliente": "kaxten_base", "indices": ["miembros", "registros", "pruebas"]}}'
+docker run --rm -p 8000:8000 -e V2_SOLO=1 -e "V2_LLAVES=$llaves" api-facial-v2:local-con-llave
+"Llave KAXTEN: $k"
+```
+
+En `http://localhost:8000/docs`, en `POST /v2/indices/desaparecidos/busqueda/foto`
+pon la llave de KAXTEN en el campo `X-Api-Key`, y sube la foto de una
+persona registrada en KAXTEN. Debe aparecer su id (el mismo que devolvería
+`/identify/`), salvo que su reporte esté desactivado o retirado.
+
+## 5. Llaves locales en `.env.local`
+
+`PythonFacialRecognition\.env.local` (git y Docker lo ignoran) tiene dos llaves de
+prueba generadas al azar, en sus comentarios: una de KAXTEN (`desaparecidos`) y una
+de la demo (`miembros`, `registros`, `pruebas`). El contenedor se corre así:
+
+```powershell
+docker run -d --name v2local -p 8000:8000 --env-file .env.local api-facial-v2:local-con-llave
+```
+
+En `/docs`, botón **Authorize** → pega una de las dos. Con la de KAXTEN,
+`POST /v2/busqueda/foto` busca entre las personas desaparecidas.

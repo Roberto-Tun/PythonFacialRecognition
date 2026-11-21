@@ -33,6 +33,16 @@ Nunca traen el texto de la excepción interna.
 ### `GET /v2/salud`
 `{"estado": "ok", "version": "...", "modelo": "facenet_512", "base_datos": "base", "autenticacion": "llaves"}`
 
+### Datos en las búsquedas
+
+Cada coincidencia trae, salvo `con_datos=false`:
+- `datos`: el documento del sujeto (`miembros` → `Miembros`, `registros` →
+  `Registros`, `desaparecidos` → `PersonasDesaparecidas`). Fechas en ISO.
+- `foto_url`: Registros → su primera foto pública; KAXTEN → la foto de esa cara;
+  socios → `null` (no se guarda su foto, a propósito).
+
+La app de la plantilla pide `con_datos=false`: ya tiene esos datos en el teléfono.
+
 ### `GET /v2/modelo`
 Modelo, modelos compatibles, dimensión (512), recorte y comparación (coseno).
 
@@ -57,12 +67,24 @@ cara: `422 sin_rostro`.
 Borra todos los vectores del sujeto en ese índice, **también los que subió un
 teléfono**. `{"borrados": n}`.
 
+### `POST /v2/busqueda/foto` — lo más simple: solo la foto
+
+`multipart`: `fotos` (1–5). Todo lo demás es opcional:
+- `indice`: vacío = busca en **todos** los índices que la llave puede ver (en modo
+  abierto local, en todos los que existen salvo `desaparecidos`).
+- `limite` (10), `umbral` (0.5), `grupo` (vacío = todos).
+
+Cada coincidencia dice en qué `indice` estaba.
+
+### `POST /v2/busqueda/vector`
+Igual, con el cuerpo de la búsqueda por vector; `?indice=` opcional.
+
 ### `POST /v2/indices/{indice}/busqueda/vector` — búsqueda (la app)
 ```json
 { "modelo": "facenet_512_fp16", "vectores": [[...512]], "limite": 10, "umbral": 0.5, "grupo": "demo_gimnasio" }
 ```
-`limite` (por defecto y máximo `V2_LIMITE_MAX`, 50), `umbral` (0–1, por defecto
-`V2_UMBRAL`, 0.5) y `grupo` son opcionales.
+`modelo` (por defecto `facenet_512`), `limite` (10; máximo `V2_LIMITE_MAX`, 50),
+`umbral` (0–1, por defecto 0.5) y `grupo` son opcionales.
 
 ### `POST /v2/indices/{indice}/busqueda/foto`
 `multipart`: `fotos`, y opcionales `limite`, `umbral` y `grupo`.
@@ -72,7 +94,7 @@ teléfono**. `{"borrados": n}`.
 {
   "indice": "miembros",
   "coincidencias": [
-    { "sujeto_id": "abc", "grupo": "demo_gimnasio", "similitud": 0.8731, "id_vector": "miembros_abc_0" }
+    { "indice": "miembros", "sujeto_id": "abc", "grupo": "demo_gimnasio", "similitud": 0.8731, "id_vector": "miembros_abc_0" }
   ],
   "comparados": 42,
   "umbral": 0.5,
@@ -106,16 +128,38 @@ servidor.
 El servidor tarda hasta `V2_REFRESCO_S` (30 s) en ver un alta que un teléfono
 escribió directo en Firestore. Las altas hechas por la v2 se ven al instante.
 
+## Índice `desaparecidos` (KAXTEN)
+
+Los mismos endpoints, con la llave de KAXTEN (`"base_datos": "(default)"`,
+índices `["desaparecidos"]`). Trabaja sobre los datos de producción **en su
+formato de la v1**, sin migrarlos:
+
+| | Comportamiento |
+|---|---|
+| Búsqueda | Contra todos los `Vectores` de `(default)`. Solo devuelve personas con `visibilidad` pública (1, o sin campo); 2, 3 o un valor raro se ocultan (T-05) |
+| Alta (vectores o fotos) | La persona debe existir en `PersonasDesaparecidas`, si no `404 sujeto_desconocido`. Se guarda como la v1: `id_persona_desaparecida` (referencia), `vector`, `ruta_storage`, `nombre_imagen`, `fecha_subida`, más `modelo` y `origen: "v2"`. Por foto, la foto se sube a `rostros/` pública, como la v1, porque la app la muestra |
+| Baja | Exige `?confirmar=true`; si no, `400 confirmacion_requerida`. Borra los vectores con la referencia o con el id en texto |
+| `grupo` | No aplica |
+
+`sujeto_id` es el id del documento de `PersonasDesaparecidas`; `datos` trae ese
+documento (como `match_info` en la v1) y `foto_url` la foto de la cara que coincidió.
+
+Con 4,742 rostros (21/11/2026) y umbral 0.5 salen varias personas; para KAXTEN
+conviene mandar un umbral más alto (p. ej. 0.7) y mostrar los primeros resultados.
+
+La v1 (`/identify/`, `/register_missing_person/`) sigue igual y ve las altas hechas
+por la v2.
+
 ## Variables de entorno
 
 | Variable | Por defecto | |
 |---|---|---|
 | `V2_BASE_DATOS` | `base` | `(default)` se rechaza al arrancar: es la de KAXTEN |
 | `V2_COLECCION` | `Vectores` | |
-| `V2_LLAVES` | vacío | JSON `{"<llave de 24+ caracteres>": {"cliente": "kaxten_base", "indices": ["miembros", "registros"]}}`. En Cloud Run, desde Secret Manager |
+| `V2_LLAVES` | vacío | JSON `{"<llave de 24+ caracteres>": {"cliente": "kaxten_base", "indices": ["miembros", "registros"]}, "<otra llave>": {"cliente": "kaxten", "base_datos": "(default)", "indices": ["desaparecidos"]}}`. En Cloud Run, desde Secret Manager |
 | `V2_SIN_LLAVE` | vacío | `1` = sin llave, todos los índices. **Solo en local** |
 | `V2_SOLO` | vacío | `1` = no se monta la v1 (no toca la base de KAXTEN) |
-| `V2_REFRESCO_S` | `30` | Cada cuánto se releen los índices |
+| `V2_REFRESCO_S` | `30` | Cada cuánto se releen los índices de la base `base` |
+| `V2_REFRESCO_KAXTEN_S` | `600` | Lo mismo para `desaparecidos` (miles de rostros: la primera carga tarda ~7 s) |
 | `V2_LIMITE_MAX` | `50` | |
-| `V2_UMBRAL` | `0.5` | Umbral por defecto. La app manda el suyo (`umbralCheckIn`, `umbralBusquedaFacial`) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | vacío | Solo en local, apuntando a la llave **montada** |

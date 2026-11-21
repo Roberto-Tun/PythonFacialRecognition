@@ -60,6 +60,13 @@ vectorial creado por Saul con `gcloud`), en lugar de la matriz en memoria.
 
 ## Fase E — KAXTEN en la v2 (migración a futuro)
 
+> **Estado (21/11/2026): E1, E2 y E3 hechas en código**, con 12 pruebas en
+> `tests/test_kaxten.py` (repositorio en memoria). Se eligió el **adaptador** de
+> lectura (`app/v2/kaxten.py`): no se migró ni se tocó ningún documento.
+> **No verificado contra la base `(default)` real**: el agente no hizo pruebas
+> contra producción. Lo prueba Saul con una llave de KAXTEN (`docs/v2/PRUEBAS_LOCAL.md`).
+> E4 (la app de KAXTEN usando la v2) y E5 (retirar la v1) siguen pendientes.
+
 La v1 **no se deshabilita**: la app publicada de KAXTEN la sigue usando. Esta fase
 prepara que KAXTEN pueda pasarse a la v2 cuando se decida.
 

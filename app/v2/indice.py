@@ -24,6 +24,7 @@ class _Cargado:
     ids: List[str]
     sujetos: List[str]
     grupos: List[str]
+    rutas: List[str]
     matriz: np.ndarray  # (n, 512), filas de norma 1
 
 
@@ -33,6 +34,7 @@ class Coincidencia:
     grupo: str
     similitud: float
     id_vector: str
+    ruta_storage: str = ""
 
 
 def normalizar(v: Sequence[float]) -> np.ndarray:
@@ -80,6 +82,7 @@ class Indices:
             ids=[v.id for v in vectores],
             sujetos=[v.sujeto_id for v in vectores],
             grupos=[v.grupo for v in vectores],
+            rutas=[v.ruta_storage for v in vectores],
             matriz=matriz,
         )
         with self._candado:
@@ -118,7 +121,7 @@ class Indices:
             sujeto = c.sujetos[pos]
             previo = mejores.get(sujeto)
             if previo is None or s > previo.similitud:
-                mejores[sujeto] = Coincidencia(sujeto, c.grupos[pos], s, c.ids[pos])
+                mejores[sujeto] = Coincidencia(sujeto, c.grupos[pos], s, c.ids[pos], c.rutas[pos])
         orden = sorted(mejores.values(), key=lambda m: m.similitud, reverse=True)
         return ResultadoBusqueda(orden[:limite], len(filas))
 

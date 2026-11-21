@@ -1,0 +1,78 @@
+# Pruebas + imagen + Cloud Run para la API v2. Ver docs/v2/DESPLIEGUE.md.
+#
+# Corre en cada push a `v2` que toque el código. El despliegue queda apagado
+# hasta que exista la variable del repositorio DESPLEGAR_V2=true (así, subir
+# este archivo no despliega nada por accidente).
+
+name: API v2 — pruebas y despliegue
+
+on:
+  push:
+    branches: [v2]
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "Dockerfile"
+      - "requirements*.txt"
+      - ".github/workflows/desplegar-v2.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: desplegar-v2
+  cancel-in-progress: false
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  desplegar:
+    needs: pruebas
+    if: vars.DESPLEGAR_V2 == 'true'
+    runs-on: ubuntu-latest
+    env:
+      PROYECTO: ${{ vars.GCP_PROJECT }}
+      REGION: ${{ vars.GCP_REGION }}
+      SERVICIO: ${{ vars.CLOUD_RUN_SERVICIO || 'kaxten-api-v2' }}
+      IMAGEN: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT }}/api-facial/api-facial-v2:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Entrar a Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Construir y subir la imagen (Artifact Registry, privado)
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -t "$IMAGEN" .
+          docker push "$IMAGEN"
+
+      - name: Desplegar en Cloud Run
+        run: |
+          gcloud run deploy "$SERVICIO" \
+            --image "$IMAGEN" \
+            --region "$REGION" \
+            --port 8000 \
+            --memory 2Gi \
+            --cpu 2 \
+            --timeout 300 \
+            --min-instances "${{ vars.CLOUD_RUN_MIN_INSTANCIAS || '0' }}" \
+            --allow-unauthenticated \
+            --set-env-vars V2_SOLO=1 \
+            --set-secrets V2_LLAVES=v2-llaves:latest
+
+      - name: Comprobar que responde
+        run: |
+          URL=$(gcloud run services describe "$SERVICIO" --region "$REGION" --format 'value(status.url)')
+          echo "Servicio: $URL"
+          curl -fsS "$URL/v2/salud"

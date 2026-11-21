@@ -49,6 +49,7 @@ def entorno():
         refresco_s=3600,
     )
     indices = Indices(repo, cfg.refresco_s)
+    ctx = rutas.Contexto(repo=repo, indices=indices)
     app = FastAPI()
     app.include_router(rutas.router)
 
@@ -57,8 +58,7 @@ def entorno():
         return JSONResponse(status_code=e.estado, content=e.cuerpo())
 
     app.dependency_overrides[rutas.obtener_config] = lambda: cfg
-    app.dependency_overrides[rutas.obtener_repo] = lambda: repo
-    app.dependency_overrides[rutas.obtener_indices] = lambda: indices
+    app.dependency_overrides[rutas.obtener_contexto] = lambda: ctx
     app.dependency_overrides[rutas.obtener_vision] = lambda: VisionFalsa()
     return TestClient(app), repo
 
@@ -173,7 +173,7 @@ def test_umbral_y_limite(entorno):
         alta(cli, f"s{i}", cerca(base, ruido=0.3, semilla=i))
     r = buscar(cli, base, limite=2, umbral=0.0)
     assert len(r.json()["coincidencias"]) == 2
-    assert buscar(cli, base, umbral=2).status_code == 400
+    assert buscar(cli, base, umbral=2).status_code == 422
 
 
 def test_modelo_incompatible_y_vector_invalido(entorno):
@@ -280,3 +280,81 @@ def test_foto_sin_cara(entorno):
     )
     assert r.status_code == 422
     assert r.json()["error"] == "sin_rostro"
+
+
+# --- Búsqueda sin índice y valores por defecto -------------------------------------
+
+
+def test_sin_indice_busca_en_todos_los_de_la_llave(entorno):
+    cli, _ = entorno
+    ana, beto = vec(1), vec(2)
+    alta(cli, "ana", ana, indice="miembros")
+    alta(cli, "beto", beto, indice="registros")
+    r = cli.post("/v2/busqueda/vector", json={"vectores": [cerca(beto)]}, headers=H)
+    assert r.status_code == 200
+    c = r.json()["coincidencias"]
+    assert [(x["indice"], x["sujeto_id"]) for x in c] == [("registros", "beto")]
+    assert r.json()["indice"] == "miembros,registros"
+
+
+def test_valores_por_defecto_si_no_se_mandan(entorno):
+    cli, _ = entorno
+    alta(cli, "ana", vec(1))
+    # Sin modelo, umbral ni límite: facenet_512, 0.5 y 10. Una cara desconocida no
+    # sale (con umbral 0 habría salido).
+    r = cli.post("/v2/indices/miembros/busqueda/vector", json={"vectores": [vec(500)]}, headers=H)
+    assert r.status_code == 200
+    assert r.json()["umbral"] == 0.5 and r.json()["limite"] == 10
+    assert r.json()["coincidencias"] == []
+
+
+def test_foto_sin_indice(entorno):
+    cli, _ = entorno
+    cli.post("/v2/indices/registros/sujetos/r1/rostros", files=[("fotos", ("a.jpg", b"cara:3", "image/jpeg"))], headers=H)
+    r = cli.post("/v2/busqueda/foto", files=[("fotos", ("q.jpg", b"cara:3", "image/jpeg"))], headers=H)
+    assert r.status_code == 200
+    assert r.json()["coincidencias"][0]["indice"] == "registros"
+
+
+def test_modo_abierto_busca_en_lo_que_exista_sin_kaxten():
+    from app.v2.auth import CLIENTE_LOCAL
+
+    repo = RepositorioMemoria()
+    repo.docs["x"] = {"indice": "miembros", "sujeto_id": "a", "grupo": "", "vector": vec(1), "modelo": "facenet_512"}
+    repo.docs["y"] = {"indice": "desaparecidos", "sujeto_id": "b", "grupo": "", "vector": vec(2), "modelo": "facenet_512"}
+    ctx = rutas.Contexto(repo=repo, indices=Indices(repo, 60))
+    assert rutas._indices_a_buscar(ctx, CLIENTE_LOCAL, None) == ["miembros"]
+
+
+# --- Datos del sujeto en la respuesta ------------------------------------------------
+
+
+def test_devuelve_datos_y_foto_del_sujeto(entorno):
+    cli, repo = entorno
+    repo.sujetos[("registros", "r1")] = {"titulo": "Bache", "fotos": ["/local/x.jpg", "https://st/r1.jpg"]}
+    repo.sujetos[("miembros", "ana")] = {"nombre": "Ana Pérez", "vencimiento": "2026-12-01"}
+    alta(cli, "r1", vec(3), indice="registros")
+    alta(cli, "ana", vec(1), indice="miembros")
+
+    c = cli.post("/v2/busqueda/vector", json={"vectores": [vec(3)]}, headers=H).json()["coincidencias"][0]
+    assert c["datos"]["titulo"] == "Bache" and c["foto_url"] == "https://st/r1.jpg"
+
+    c = cli.post("/v2/busqueda/vector", json={"vectores": [vec(1)]}, headers=H).json()["coincidencias"][0]
+    assert c["datos"]["nombre"] == "Ana Pérez"
+    assert c["foto_url"] is None  # los socios no guardan foto
+
+    c = cli.post("/v2/busqueda/vector?con_datos=false", json={"vectores": [vec(1)]}, headers=H).json()["coincidencias"][0]
+    assert c["datos"] is None
+
+
+def test_campos_de_texto_vacios_en_el_formulario(entorno):
+    cli, _ = entorno
+    cli.post("/v2/indices/registros/sujetos/r1/rostros", files=[("fotos", ("a.jpg", b"cara:3", "image/jpeg"))], headers=H)
+    # Como lo manda /docs ahora: indice y grupo vacíos → todos.
+    r = cli.post(
+        "/v2/busqueda/foto",
+        data={"indice": "", "grupo": ""},
+        files=[("fotos", ("q.jpg", b"cara:3", "image/jpeg"))],
+        headers=H,
+    )
+    assert r.json()["coincidencias"][0]["sujeto_id"] == "r1"

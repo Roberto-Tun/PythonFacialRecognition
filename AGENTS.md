@@ -18,10 +18,13 @@ Flutter). Más adelante KAXTEN podría pasarse a la v2 con su propio índice.
 
 1. **La v1 no cambia.** `/register_missing_person/` e `/identify/` siguen con las
    mismas rutas, entradas y respuestas: la app publicada de KAXTEN depende de ellas.
-2. **La v2 solo escribe en la base de Firestore `base`**, nunca en `(default)`, que es
-   la de KAXTEN en producción. Lo garantiza `app/v2/config.py`: el servicio se
-   niega a arrancar la v2 si `V2_BASE_DATOS` apunta a `(default)`. La v2 **no sube
-   fotos** a Storage.
+2. **La base de KAXTEN (`(default)`) solo se abre con la llave de KAXTEN.** Toda
+   llave trabaja en la base `base`, salvo una que declare `"base_datos": "(default)"`,
+   y esa solo puede tener el índice `desaparecidos` (`app/v2/config.py` se niega a
+   arrancar si no). Ni el modo abierto de pruebas (`V2_SIN_LLAVE`) entra ahí. En ese
+   índice la v2 **no crea personas**, filtra la visibilidad, escribe en el formato
+   de la v1 (`app/v2/kaxten.py`) y exige `?confirmar=true` para borrar. Fuera de
+   KAXTEN, la v2 **no sube fotos** a Storage.
 3. **Mismo esquema que los teléfonos.** La v2 lee y escribe la colección `Vectores`
    de la base `base` con los campos que ya escribe la app (`indice`, `sujeto_id`,
    `grupo`, `vector`, `modelo`, `fecha`). Cambiarlo rompe el reconocimiento sin red
@@ -29,8 +32,11 @@ Flutter). Más adelante KAXTEN podría pasarse a la v2 con su propio índice.
 4. **Mismo modelo que los teléfonos.** FaceNet 20180402 (512), recorte de 160×160 y
    la normalización de `keras_facenet`. Si cambia cualquiera de las tres, los
    vectores del servidor y los del teléfono dejan de ser comparables.
-5. **No desplegar.** Ni `gcloud run deploy`, ni `gcloud builds submit`, ni push a
-   una rama con disparador de Cloud Build. El despliegue lo hace Saul.
+5. **No desplegar.** Ni `gcloud run deploy`, ni `gcloud builds submit`, ni lanzar a
+   mano el flujo `.github/workflows/desplegar-v2.yml`, ni tocar la variable
+   `DESPLEGAR_V2` del repositorio. Ojo: con esa variable en `true`, **cada push a
+   `v2` que toque `app/`, `tests/`, `Dockerfile` o `requirements` despliega** a Cloud
+   Run. Ver `docs/v2/DESPLIEGUE.md`.
 6. **No copiar llaves.** Ningún `.json` de cuenta de servicio, `.pem` ni llave de
    cliente en el código, la imagen, la documentación o un mensaje. Solo nombres de
    variables de entorno.

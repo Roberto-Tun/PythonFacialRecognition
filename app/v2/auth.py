@@ -3,7 +3,7 @@
 import hmac
 from typing import Optional
 
-from app.v2.config import Cliente, ConfigV2
+from app.v2.config import INDICE_KAXTEN, Cliente, ConfigV2
 from app.v2.errores import ErrorV2
 
 CLIENTE_LOCAL = Cliente(nombre="local", indices=frozenset({"*"}))
@@ -28,5 +28,11 @@ def identificar(config: ConfigV2, llave: Optional[str]) -> Cliente:
 
 
 def exigir_indice(cliente: Cliente, indice: str) -> None:
+    # Ni el modo abierto de pruebas (`*`) llega a las personas desaparecidas:
+    # hace falta la llave de KAXTEN.
+    if indice == INDICE_KAXTEN and not cliente.es_kaxten:
+        raise ErrorV2(403, "indice_ajeno", "El índice de KAXTEN solo se abre con su llave.")
+    if cliente.es_kaxten and indice != INDICE_KAXTEN:
+        raise ErrorV2(403, "indice_ajeno", f"La llave de KAXTEN solo abre el índice '{INDICE_KAXTEN}'.")
     if not cliente.puede(indice):
         raise ErrorV2(403, "indice_ajeno", f"Este cliente no tiene acceso al índice '{indice}'.")
